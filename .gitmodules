@@ -1,0 +1,3 @@
+[submodule "chain-wallet-libs"]
+	path = chain-wallet-libs
+	url = https://github.com/input-output-hk/chain-wallet-libs
