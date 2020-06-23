@@ -81,10 +81,12 @@ where
                         mut bytes,
                     } => {
                         dbg!(response.status());
-                        if response.status() != reqwest::StatusCode::OK {
+                        let status = response.status();
+                        if status != reqwest::StatusCode::OK {
+                            dbg!(response.text().await);
                             return Some((
                                 Progress::Errored {
-                                    status_code: response.status(),
+                                    status_code: status,
                                 },
                                 State::Finished,
                             ));
