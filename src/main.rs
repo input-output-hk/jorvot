@@ -1,10 +1,18 @@
+use chain_addr::Discrimination;
 use iced::{
-    button, executor, scrollable, slider, text_input, Application, Button,
-    Checkbox, Color, Column, Command, Container, Element, HorizontalAlignment,
-    Length, Radio, Row, Scrollable, Settings, Slider, Space, Text,
-    TextInput,
+    button, executor, scrollable, text_input, Align, Application, Button, Column, Command,
+    Container, Element, HorizontalAlignment, Length, ProgressBar, Radio, Row, Scrollable, Settings,
+    Space, Subscription, Text, TextInput,
 };
 use wallet_core as chain;
+
+mod send_transaction;
+mod wallet_state;
+
+use send_transaction::SendTransactionState;
+use wallet_state::AccountState;
+
+const BLOCK0: &[u8] = include_bytes!("block0.bin");
 
 pub fn main() {
     env_logger::init();
@@ -17,11 +25,64 @@ pub struct Tour {
     scroll: scrollable::State,
     back_button: button::State,
     next_button: button::State,
+    wallet: Wallet,
+}
+
+pub struct Wallet {
     wallet: Option<chain::Wallet>,
+    settings: Option<chain::Settings>,
+    proposal: chain::Proposal,
+    vote: Option<Box<[u8]>>,
+}
+
+impl Wallet {
+    pub fn new() -> Self {
+        let id = [0; 32].into();
+        Self {
+            wallet: None,
+            settings: None,
+            proposal: chain::Proposal::new(
+                id,
+                chain::PayloadType::Public,
+                0,
+                chain::Options::new_length(3).unwrap(),
+            ),
+            vote: None,
+        }
+    }
+
+    pub fn recover(&mut self, mnemonics: &str) -> Result<(), chain::Error> {
+        let mut wallet = chain::Wallet::recover(mnemonics, &[])?;
+        let settings = wallet.retrieve_funds(BLOCK0)?;
+
+        self.wallet = Some(wallet);
+        self.settings = Some(settings);
+
+        Ok(())
+    }
+
+    pub fn make_choice(&mut self, choice: Choice) {
+        self.vote = self
+            .wallet
+            .as_mut()
+            .unwrap()
+            .vote(
+                self.settings.clone().unwrap(),
+                &self.proposal,
+                choice.into(),
+            )
+            .ok();
+    }
+}
+
+impl Default for Wallet {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Application for Tour {
-    type Executor = executor::Null;
+    type Executor = executor::Default;
     type Message = Message;
     type Flags = ();
 
@@ -32,7 +93,7 @@ impl Application for Tour {
                 scroll: scrollable::State::new(),
                 back_button: button::State::new(),
                 next_button: button::State::new(),
-                wallet: None,
+                wallet: Wallet::new(),
             },
             Command::none(),
         )
@@ -50,12 +111,50 @@ impl Application for Tour {
             Message::NextPressed => {
                 self.steps.advance();
             }
-            Message::StepMessage(step_msg) => {
-                self.steps.update(step_msg, &mut self.wallet)
-            }
+            Message::StepMessage(step_msg) => self.steps.update(step_msg, &mut self.wallet),
         }
 
         Command::none()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        match self.steps.current() {
+            Step::LoadState {
+                loaded: None,
+                progressed: _,
+            } => {
+                let address = chain_addr::AddressReadable::from_address(
+                    "test",
+                    &self
+                        .wallet
+                        .wallet
+                        .as_ref()
+                        .unwrap()
+                        .account(Discrimination::Production),
+                );
+                dbg!(address.to_string());
+                let url = format!(
+                    "https://api.vit.iohk.io/api/v0/account/{}",
+                    self.wallet.wallet.as_ref().unwrap().id()
+                );
+
+                wallet_state::query(url)
+                    .map(|progress| StepMessage::State { progress })
+                    .map(Message::StepMessage)
+            }
+            Step::WaitConfirmation {
+                loaded: None,
+                progressed: _,
+            } => {
+                let url = "https://api.vit.iohk.io/api/v0/message".to_owned();
+                let body = self.wallet.vote.clone().unwrap_or_default();
+
+                send_transaction::post(url, body)
+                    .map(|progress| StepMessage::Transaction { progress })
+                    .map(Message::StepMessage)
+            }
+            _ => Subscription::none(),
+        }
     }
 
     fn view(&mut self) -> Element<Message> {
@@ -95,8 +194,8 @@ impl Application for Tour {
             .push(controls)
             .into();
 
-        let scrollable = Scrollable::new(scroll)
-            .push(Container::new(content).width(Length::Fill).center_x());
+        let scrollable =
+            Scrollable::new(scroll).push(Container::new(content).width(Length::Fill).center_x());
 
         Container::new(scrollable)
             .height(Length::Fill)
@@ -128,20 +227,26 @@ impl Steps {
                     state: text_input::State::new(),
                 },
                 Step::LoadState {
-                    loaded: false,
+                    loaded: None,
+                    progressed: 0.0,
                 },
-                Step::Vote {
-                    choice: None,
+                Step::Vote { choice: None },
+                Step::WaitConfirmation {
+                    loaded: None,
+                    progressed: 0.0,
                 },
-                Step::WaitConfirmation { confirmed: false },
                 Step::End,
             ],
             current: 0,
         }
     }
 
-    fn update(&mut self, msg: StepMessage, wallet: &mut Option<chain::Wallet>) {
+    fn update(&mut self, msg: StepMessage, wallet: &mut Wallet) {
         self.steps[self.current].update(msg, wallet);
+    }
+
+    fn current(&self) -> &Step {
+        self.steps.get(self.current).expect("cannot overflow")
     }
 
     fn view(&mut self) -> Element<StepMessage> {
@@ -165,8 +270,7 @@ impl Steps {
     }
 
     fn can_continue(&self) -> bool {
-        self.current + 1 < self.steps.len()
-            && self.steps[self.current].can_continue()
+        self.current + 1 < self.steps.len() && self.steps[self.current].can_continue()
     }
 
     fn title(&self) -> &str {
@@ -183,38 +287,79 @@ enum Step {
         state: text_input::State,
     },
     LoadState {
-        loaded: bool,
+        loaded: Option<Result<AccountState, String>>,
+        progressed: f32,
     },
     Vote {
-        choice: Option<Choice>
+        choice: Option<Choice>,
     },
-    WaitConfirmation { confirmed: bool },
+    WaitConfirmation {
+        loaded: Option<Result<SendTransactionState, String>>,
+        progressed: f32,
+    },
     End,
 }
 
 #[derive(Debug, Clone)]
 pub enum StepMessage {
     ChangeKey(String),
-    State { value: chain::Value, counter: u32 },
+    State {
+        progress: wallet_state::Progress,
+    },
+    Transaction {
+        progress: send_transaction::Progress,
+    },
     SelectVote(Choice),
 }
 
 impl<'a> Step {
-    fn update(&mut self, msg: StepMessage, wallet: &mut Option<chain::Wallet>) {
+    fn update(&mut self, msg: StepMessage, wallet: &mut Wallet) {
         match msg {
             StepMessage::ChangeKey(input) => {
-                if let Step::EnterKey { retrieved, key, state: _ } = self {
+                if let Step::EnterKey {
+                    retrieved,
+                    key,
+                    state: _,
+                } = self
+                {
                     *key = input;
-                    *wallet = chain::Wallet::recover(&key, &[]).ok();
-                    *retrieved = wallet.is_some();
+                    wallet.recover(&key).unwrap();
+                    *retrieved = wallet.wallet.is_some();
                 }
             }
-            StepMessage::State { value, counter } => {
-                if let Some(wallet) = wallet {
-                    wallet.set_state(value, counter);
-
-                    if let Step::LoadState { loaded } = self {
-                        *loaded = true;
+            StepMessage::State { progress } => {
+                if let Step::LoadState { loaded, progressed } = self {
+                    match progress {
+                        wallet_state::Progress::Started => *progressed = 0.0,
+                        wallet_state::Progress::Advanced(f) => *progressed = f,
+                        wallet_state::Progress::Finished { account_state } => {
+                            *loaded = Some(Ok(account_state));
+                        }
+                        wallet_state::Progress::Errored { status_code } => {
+                            dbg!(status_code);
+                            *loaded = Some(Err("Account not found".to_owned()));
+                        }
+                        wallet_state::Progress::Failure { error } => {
+                            *loaded = Some(Err(format!("Error: {}", error)));
+                        }
+                    }
+                }
+            }
+            StepMessage::Transaction { progress } => {
+                if let Step::WaitConfirmation { loaded, progressed } = self {
+                    match progress {
+                        send_transaction::Progress::Started => *progressed = 0.0,
+                        send_transaction::Progress::Advanced(f) => *progressed = f,
+                        send_transaction::Progress::Finished { state } => {
+                            *loaded = Some(Ok(state));
+                        }
+                        send_transaction::Progress::Errored { status_code } => {
+                            dbg!(status_code);
+                            *loaded = Some(Err("Cannot send vote".to_owned()));
+                        }
+                        send_transaction::Progress::Failure { error } => {
+                            *loaded = Some(Err(format!("Error: {}", error)));
+                        }
                     }
                 }
             }
@@ -241,9 +386,15 @@ impl<'a> Step {
         match self {
             Step::Welcome => true,
             Step::EnterKey { retrieved, .. } => *retrieved,
-            Step::LoadState { loaded } => *loaded,
+            Step::LoadState {
+                loaded,
+                progressed: _,
+            } => loaded.as_ref().map(|r| r.is_ok()).unwrap_or(false),
             Step::Vote { choice } => choice.is_some(),
-            Step::WaitConfirmation { confirmed } => *confirmed,
+            Step::WaitConfirmation {
+                loaded,
+                progressed: _,
+            } => loaded.is_some(),
             Step::End => false,
         }
     }
@@ -252,10 +403,11 @@ impl<'a> Step {
         match self {
             Step::Welcome => Self::welcome(),
             Step::EnterKey { key, state, .. } => Self::staking_wallet(key, state),
-            Step::LoadState { loaded: false } => unimplemented!(),
-            Step::LoadState { loaded: true } => unimplemented!(),
-            Step::Vote { choice } => unimplemented!(),
-            Step::WaitConfirmation { confirmed } => unimplemented!(),
+            Step::LoadState { loaded, progressed } => Self::view_get_state(*progressed, loaded),
+            Step::Vote { choice } => Self::make_choice(choice),
+            Step::WaitConfirmation { loaded, progressed } => {
+                Self::view_send_vote(*progressed, loaded)
+            }
             Step::End => Self::end(),
         }
         .into()
@@ -268,30 +420,126 @@ impl<'a> Step {
     fn welcome() -> Column<'a, StepMessage> {
         Self::container("Welcome!")
             .push(Text::new(
-"The Incentivised TestNet has been running for more than 6 months. \
+                "The Incentivised TestNet has been running for more than 6 months. \
 Seeing how the community is dedicated to the Jörmungandr node's progress \
 We thought we would give you an opportunity to vote to decide its fate.\
-"
+",
             ))
             .push(Text::new(
-"To vote you only need your staking key. Either you have been using \
+                "To vote you only need your staking key. Either you have been using \
 the account style wallet and it is straightforward your wallet's mnemonics. \
-Or you have been using UTxO base wallet and you need to enter your stake private key."
+Or you have been using UTxO base wallet and you need to enter your stake private key.",
             ))
     }
 
     fn staking_wallet(key: &str, state: &'a mut text_input::State) -> Column<'a, StepMessage> {
-        let key_input = TextInput::new(
-            state,
-            "Inputs...",
-            key,
-            StepMessage::ChangeKey
-        ).padding(10).size(30);
-
+        let key_input = TextInput::new(state, "Inputs...", key, StepMessage::ChangeKey)
+            .padding(10)
+            .size(30);
 
         Self::container("Retrieve your stake key")
-            .push(Text::new("Use your account mnemonics or your StakeKey private key"))
+            .push(Text::new(
+                "Use your account mnemonics or your StakeKey private key",
+            ))
             .push(key_input)
+    }
+
+    fn make_choice(choice: &Option<Choice>) -> Column<'a, StepMessage> {
+        let question = Column::new()
+            .padding(20)
+            .spacing(10)
+            .push(Text::new("Do you want to top up the reward pot of the ITN of 95M Ada?").size(24))
+            .push(Choice::all().iter().cloned().fold(
+                Column::new().padding(10).spacing(20),
+                |choices, language| {
+                    choices.push(Radio::new(
+                        language,
+                        language,
+                        *choice,
+                        StepMessage::SelectVote,
+                    ))
+                },
+            ));
+
+        Self::container("Cast your vote: The community needs you!").push(question)
+    }
+
+    fn view_get_state(
+        current_progress: f32,
+        data: &Option<Result<AccountState, String>>,
+    ) -> Column<'a, StepMessage> {
+        let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
+
+        let control: Element<_> = if let Some(result) = data {
+            match result {
+                Ok(account_state) => Column::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
+                    .push(Text::new("Wallet synced finished!"))
+                    .push(Text::new(format!(
+                        "retrieved value {}",
+                        account_state.value
+                    )))
+                    .push(Text::new(format!(
+                        "retrieved counter {}",
+                        account_state.counter
+                    )))
+                    .into(),
+                Err(error) => Column::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
+                    .push(Text::new("Cannot sync the wallet!"))
+                    .push(Text::new(error.to_owned()))
+                    .into(),
+            }
+        } else {
+            Text::new(format!("Downloading... {:.2}%", current_progress)).into()
+        };
+        let content = Column::new()
+            .spacing(10)
+            .padding(10)
+            .align_items(Align::Center)
+            .push(progress_bar)
+            .push(control);
+
+        Self::container("Retrieving wallet data").push(content)
+    }
+
+    fn view_send_vote(
+        current_progress: f32,
+        data: &Option<Result<SendTransactionState, String>>,
+    ) -> Column<'a, StepMessage> {
+        let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
+
+        let control: Element<_> = if let Some(result) = data {
+            match result {
+                Ok(state) => Column::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
+                    .push(Text::new("Vote sent successfully!"))
+                    .push(Text::new(format!(
+                        "The transaction id '{}' can be used to confirm the vote transaction ont the explorer",
+                        state.0
+                    )))
+                    .into(),
+                Err(error) => Column::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
+                    .push(Text::new("Cannot send the transaction!"))
+                    .push(Text::new(error.to_owned()))
+                    .into(),
+            }
+        } else {
+            Text::new(format!("Sending vote... {:.2}%", current_progress)).into()
+        };
+        let content = Column::new()
+            .spacing(10)
+            .padding(10)
+            .align_items(Align::Center)
+            .push(progress_bar)
+            .push(control);
+
+        Self::container("Sending vote to the blockchain").push(content)
     }
 
     fn end() -> Column<'a, StepMessage> {
@@ -300,15 +548,14 @@ Or you have been using UTxO base wallet and you need to enter your stake private
                 "It has been such a long journey. Whatever the choice you made it \
                 The Jörmungandr Team thanks you for your contribution and support.",
             ))
-            .push(Text::new("We will make announcement shortly after the results \
-            so stay tune."))
+            .push(Text::new(
+                "We will make announcement shortly after the results \
+            so stay tune.",
+            ))
     }
 }
 
-fn button<'a, Message>(
-    state: &'a mut button::State,
-    label: &str,
-) -> Button<'a, Message> {
+fn button<'a, Message>(state: &'a mut button::State, label: &str) -> Button<'a, Message> {
     Button::new(
         state,
         Text::new(label).horizontal_alignment(HorizontalAlignment::Center),
@@ -326,11 +573,7 @@ pub enum Choice {
 
 impl Choice {
     fn all() -> [Choice; 3] {
-        [
-            Choice::Blank,
-            Choice::Yes,
-            Choice::No,
-        ]
+        [Choice::Blank, Choice::Yes, Choice::No]
     }
 }
 
