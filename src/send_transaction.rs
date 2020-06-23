@@ -41,7 +41,9 @@ where
                 match state {
                     State::Ready(url, body) => {
                         let client = reqwest::Client::new();
-                        let response = client.post(&url).body(Vec::from(body)).send().await;
+                        let response = client.post(&url)
+                            .header("Content-Type", "application/octet-stream")
+                            .body(Vec::from(body)).send().await;
 
                         match response {
                             Ok(response) => {
