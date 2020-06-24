@@ -41,10 +41,12 @@ where
 
                         let tx = hex::encode(&body);
                         dbg!(&tx);
-                        let response = client.post(&url)
+                        let response = client
+                            .post(&url)
                             .header("Content-Type", "application/octet-stream")
                             .body(body.to_vec())
-                            .send().await;
+                            .send()
+                            .await;
 
                         match response {
                             Ok(response) => {
