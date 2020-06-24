@@ -46,7 +46,7 @@ where
                         dbg!(&tx);
                         let response = client.post(&url)
                             .header("Content-Type", "application/octet-stream")
-                            .body(tx)
+                            .body(body.to_vec())
                             .send().await;
 
                         match response {
