@@ -225,6 +225,7 @@ impl Steps {
                     key: String::new(),
                     retrieved: false,
                     state: text_input::State::new(),
+                    error: None,
                 },
                 Step::LoadState {
                     loaded: None,
@@ -285,6 +286,7 @@ enum Step {
         key: String,
         retrieved: bool,
         state: text_input::State,
+        error: Option<chain::Error>,
     },
     LoadState {
         loaded: Option<Result<AccountState, String>>,
@@ -320,10 +322,11 @@ impl<'a> Step {
                     retrieved,
                     key,
                     state: _,
+                    error,
                 } = self
                 {
                     *key = input;
-                    wallet.recover(&key).unwrap();
+                    *error = wallet.recover(&key).err();
                     *retrieved = wallet.wallet.is_some();
                 }
             }
@@ -403,7 +406,7 @@ impl<'a> Step {
     fn view(&mut self) -> Element<StepMessage> {
         match self {
             Step::Welcome => Self::welcome(),
-            Step::EnterKey { key, state, .. } => Self::staking_wallet(key, state),
+            Step::EnterKey { key, state, error, .. } => Self::staking_wallet(key, state, error),
             Step::LoadState { loaded, progressed } => Self::view_get_state(*progressed, loaded),
             Step::Vote { choice } => Self::make_choice(choice),
             Step::WaitConfirmation { loaded, progressed } => {
@@ -433,16 +436,23 @@ Or you have been using UTxO base wallet and you need to enter your stake private
             ))
     }
 
-    fn staking_wallet(key: &str, state: &'a mut text_input::State) -> Column<'a, StepMessage> {
+    fn staking_wallet(key: &str, state: &'a mut text_input::State, error: &Option<chain::Error>) -> Column<'a, StepMessage> {
         let key_input = TextInput::new(state, "Inputs...", key, StepMessage::ChangeKey)
             .padding(10)
             .size(30);
+
+        let error = if let Some(error) = error {
+            Text::new(error.to_string())
+        } else {
+            Text::new("")
+        };
 
         Self::container("Retrieve your stake key")
             .push(Text::new(
                 "Use your account mnemonics or your StakeKey private key",
             ))
             .push(key_input)
+            .push(error)
     }
 
     fn make_choice(choice: &Option<Choice>) -> Column<'a, StepMessage> {
