@@ -1,0 +1,87 @@
+on:
+  push:
+    tags:
+      - 'v[0-9]+.*' # push events to matching releases
+
+name: Release
+
+jobs:
+  initial_release:
+    name: Create base release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@master
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  release_assets:
+    name: Release assets
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Linux
+          - { os: ubuntu-latest, toolchain: stable, target: x86_64-unknown-linux-gnu }
+          # Macos
+          - { os: macos-latest, toolchain: stable, target: x86_64-apple-darwin }
+          # Windows
+          - { os: windows-latest, toolchain: stable, target: x86_64-pc-windows-msvc }
+
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.config.toolchain }}
+          target: ${{ matrix.config.target }}
+          override: true
+          default: true
+
+      - name: Checkout code
+        uses: actions/checkout@v1
+        with:
+          submodules: true
+
+      - name: Update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive
+
+      - name: Build library
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.config.cross }}
+          command: build
+          args: --release --target ${{ matrix.config.target }}
+
+      - name: Get tag version
+        id: get_version
+        run: echo ::set-output name=VERSION::``${GITHUB_REF#refs/tags/}``
+        shell: bash
+
+      - name: Pack binaries if unix
+        if: matrix.config.os != 'windows-latest'
+        run: tar -C ./target/${{ matrix.config.target }}/release -czvf jorvote-${{ steps.get_version.outputs.VERSION }}-${{ matrix.config.target }}.tar.gz jorvote
+
+      - name: Pack binaries if windows
+        if: matrix.config.os == 'windows-latest'
+        run: compress-archive target\${{ matrix.config.target }}\release\jorvote.exe jorvote-${{ steps.get_version.outputs.VERSION }}-${{ matrix.config.target }}.zip
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v1-release
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: jorvote-${{ steps.get_version.outputs.VERSION }}-${{ matrix.config.target }}.*
+          asset_name: jorvote-${{ steps.get_version.outputs.VERSION }}-${{ matrix.config.target }}
+          tag: ${{ github.ref }}
+          file_glob: true
+          overwrite: true
