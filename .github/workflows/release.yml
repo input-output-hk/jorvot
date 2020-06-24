@@ -36,7 +36,7 @@ jobs:
           # Macos
           - { os: macos-latest, toolchain: stable, target: x86_64-apple-darwin }
           # Windows
-          - { os: windows-latest, toolchain: stable-x86_64-pc-windows-msvc, target: x86_64-pc-windows-msvc }
+          - { os: windows-latest, toolchain: stable, target: x86_64-pc-windows-msvc }
 
     steps:
       - uses: actions-rs/toolchain@v1
@@ -50,6 +50,11 @@ jobs:
         uses: actions/checkout@v1
         with:
           submodules: true
+
+      - name: Update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive
 
       - name: Build library
         uses: actions-rs/cargo@v1
