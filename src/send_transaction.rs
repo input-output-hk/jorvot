@@ -14,9 +14,6 @@ pub struct Download {
     body: Box<[u8]>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct SendTransactionState(pub String);
-
 // Make sure iced can use our download stream
 impl<H, I> iced_native::subscription::Recipe<H, I> for Download
 where
@@ -114,17 +111,8 @@ where
                                 ))
                             }
                             Ok(None) => {
-                                match serde_json::from_slice::<SendTransactionState>(&bytes) {
-                                    Err(error) => Some((
-                                        Progress::Failure {
-                                            error: error.to_string(),
-                                        },
-                                        State::Finished,
-                                    )),
-                                    Ok(state) => {
-                                        Some((Progress::Finished { state }, State::Finished))
-                                    }
-                                }
+                                let id = String::from_utf8_lossy(&bytes).to_string();
+                                Some((Progress::Finished { id }, State::Finished))
                             }
                             Err(error) => Some((
                                 Progress::Failure {
@@ -153,7 +141,7 @@ where
 pub enum Progress {
     Started,
     Advanced(f32),
-    Finished { state: SendTransactionState },
+    Finished { id: String },
     Errored { status_code: reqwest::StatusCode },
     Failure { error: String },
 }

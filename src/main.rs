@@ -9,7 +9,6 @@ use wallet_core as chain;
 mod send_transaction;
 mod wallet_state;
 
-use send_transaction::SendTransactionState;
 use wallet_state::AccountState;
 
 const BLOCK0: &[u8] = include_bytes!("block0.bin");
@@ -59,6 +58,12 @@ impl Wallet {
         self.settings = Some(settings);
 
         Ok(())
+    }
+
+    pub fn set_state(&mut self, value: chain::Value, counter: u32) {
+        if let Some(wallet) = self.wallet.as_mut() {
+            wallet.set_state(value, counter)
+        }
     }
 
     pub fn make_choice(&mut self, choice: Choice) {
@@ -187,9 +192,9 @@ impl Application for Tour {
         }
 
         let content: Element<_> = Column::new()
-            .max_width(540)
-            .spacing(20)
-            .padding(20)
+            .max_width(800)
+            .spacing(5)
+            .padding(5)
             .push(steps.view().map(Message::StepMessage))
             .push(controls)
             .into();
@@ -296,7 +301,7 @@ enum Step {
         choice: Option<Choice>,
     },
     WaitConfirmation {
-        loaded: Option<Result<SendTransactionState, String>>,
+        loaded: Option<Result<String, String>>,
         progressed: f32,
     },
     End,
@@ -336,6 +341,7 @@ impl<'a> Step {
                         wallet_state::Progress::Started => *progressed = 0.0,
                         wallet_state::Progress::Advanced(f) => *progressed = f,
                         wallet_state::Progress::Finished { account_state } => {
+                            wallet.set_state(chain::Value(account_state.value), account_state.counter);
                             *loaded = Some(Ok(account_state));
                         }
                         wallet_state::Progress::Errored { status_code } => {
@@ -353,8 +359,8 @@ impl<'a> Step {
                     match progress {
                         send_transaction::Progress::Started => *progressed = 0.0,
                         send_transaction::Progress::Advanced(f) => *progressed = f,
-                        send_transaction::Progress::Finished { state } => {
-                            *loaded = Some(Ok(state));
+                        send_transaction::Progress::Finished { id } => {
+                            *loaded = Some(Ok(id));
                         }
                         send_transaction::Progress::Errored { status_code } => {
                             dbg!(status_code);
@@ -518,7 +524,7 @@ Or you have been using UTxO base wallet and you need to enter your stake private
 
     fn view_send_vote(
         current_progress: f32,
-        data: &Option<Result<SendTransactionState, String>>,
+        data: &Option<Result<String, String>>,
     ) -> Column<'a, StepMessage> {
         let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
 
@@ -530,7 +536,7 @@ Or you have been using UTxO base wallet and you need to enter your stake private
                     .push(Text::new("Vote sent successfully!"))
                     .push(Text::new(format!(
                         "The transaction id '{}' can be used to confirm the vote transaction ont the explorer",
-                        state.0
+                        state
                     )))
                     .into(),
                 Err(error) => Column::new()
