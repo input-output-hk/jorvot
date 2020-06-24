@@ -7,9 +7,10 @@ repository = "https://github.com/input-output-hk/jorvot"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-iced = { version = "0.1.1", features = [ "tokio" ] }
-iced_native = "*"
-iced_futures = "0.1.2"
+# iced = { version = "0.1.1", features = [ "tokio" ] }
+iced = {git = "https://github.com/hecrj/iced", features = [ "tokio", "glow" ] }
+iced_native = { git = "https://github.com/hecrj/iced" }
+iced_futures = { git = "https://github.com/hecrj/iced" }
 serde = { version = "1.0", features = [ "derive" ] }
 serde_json = "*"
 reqwest = "0.10"

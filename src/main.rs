@@ -16,7 +16,15 @@ const BLOCK0: &[u8] = include_bytes!("block0.bin");
 pub fn main() {
     env_logger::init();
 
-    Tour::run(Settings::default())
+    let mut settings = Settings::default();
+
+    settings.window.size = (1024, 768);
+    settings.window.resizable = true;
+    settings.window.decorations = true;
+
+    settings.default_font = None;
+
+    Tour::run(settings);
 }
 
 pub struct Tour {
