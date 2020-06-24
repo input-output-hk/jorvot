@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use chain_addr::Discrimination;
 use iced::{
     button, executor, scrollable, text_input, Align, Application, Button, Column, Command,
