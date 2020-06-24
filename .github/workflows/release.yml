@@ -56,7 +56,7 @@ jobs:
         with:
           use-cross: ${{ matrix.config.cross }}
           command: build
-          args: --release --target ${{ matrix.config.target }
+          args: --release --target ${{ matrix.config.target }}
 
       - name: Get tag version
         id: get_version
