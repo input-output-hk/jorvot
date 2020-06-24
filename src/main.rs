@@ -37,7 +37,7 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn new() -> Self {
-        let id = [0; 32].into();
+        let id = "58993ca8d4721fb79b74413d4b8f7a4861c5b6426ac93efceda8f75c3e6f40eb".parse().unwrap();
         Self {
             wallet: None,
             settings: None,

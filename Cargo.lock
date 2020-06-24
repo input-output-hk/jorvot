@@ -1433,6 +1433,7 @@ dependencies = [
  "chain-addr",
  "chain-impl-mockchain",
  "env_logger",
+ "hex",
  "iced",
  "iced_futures",
  "iced_native",

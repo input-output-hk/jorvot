@@ -43,7 +43,8 @@ where
                         let client = reqwest::Client::new();
                         let response = client.post(&url)
                             .header("Content-Type", "application/octet-stream")
-                            .body(Vec::from(body)).send().await;
+                            .body(hex::encode(&body))
+                            .send().await;
 
                         match response {
                             Ok(response) => {
