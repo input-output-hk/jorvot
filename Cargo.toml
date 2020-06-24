@@ -15,6 +15,7 @@ serde_json = "*"
 reqwest = "0.10"
 env_logger = "0.7"
 hex = "*"
+webbrowser = "0.5.4"
 wallet-core = { path = "./chain-wallet-libs/bindings/wallet-core" }
 chain-impl-mockchain = { path = "./chain-wallet-libs/chain-deps/chain-impl-mockchain" }
 chain-addr = { path = "./chain-wallet-libs/chain-deps/chain-addr" }
