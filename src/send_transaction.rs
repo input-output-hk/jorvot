@@ -41,9 +41,12 @@ where
                 match state {
                     State::Ready(url, body) => {
                         let client = reqwest::Client::new();
+
+                        let tx = hex::encode(&body);
+                        dbg!(&tx);
                         let response = client.post(&url)
                             .header("Content-Type", "application/octet-stream")
-                            .body(hex::encode(&body))
+                            .body(tx)
                             .send().await;
 
                         match response {

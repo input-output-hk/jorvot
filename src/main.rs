@@ -366,6 +366,7 @@ impl<'a> Step {
             StepMessage::SelectVote(new_choice) => {
                 if let Step::Vote { choice, .. } = self {
                     *choice = Some(new_choice);
+                    wallet.make_choice(new_choice);
                 }
             }
         };
