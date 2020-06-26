@@ -39,6 +39,7 @@ pub struct Tour {
 
 pub struct Wallet {
     wallet: Option<chain::Wallet>,
+    id: Option<String>,
     settings: Option<chain::Settings>,
     proposal: chain::Proposal,
     vote: Option<Box<[u8]>>,
@@ -46,11 +47,12 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn new() -> Self {
-        let id = "58993ca8d4721fb79b74413d4b8f7a4861c5b6426ac93efceda8f75c3e6f40eb"
+        let id = "d5bd73ca1b2cb59c44e9ca2e4aa3e4bc1a1aba2862fce19a9516e5041abfe92f"
             .parse()
             .unwrap();
         Self {
             wallet: None,
+            id: None,
             settings: None,
             proposal: chain::Proposal::new(
                 id,
@@ -66,6 +68,7 @@ impl Wallet {
         let mut wallet = chain::Wallet::recover(mnemonics, &[])?;
         let settings = wallet.retrieve_funds(BLOCK0)?;
 
+        self.id = wallet.utxo_account_id().get(0).map(|id| id.to_string());
         self.wallet = Some(wallet);
         self.settings = Some(settings);
 
@@ -87,8 +90,10 @@ impl Wallet {
                 self.settings.clone().unwrap(),
                 &self.proposal,
                 choice.into(),
+                true,
             )
             .ok();
+        dbg!(&self.vote);
     }
 }
 
@@ -155,8 +160,8 @@ impl Application for Tour {
                 );
                 dbg!(address.to_string());
                 let url = format!(
-                    "https://api.vit.iohk.io/api/v0/account/{}",
-                    self.wallet.wallet.as_ref().unwrap().id()
+                    "https://explorer.incentivized-testnet.iohkdev.io/api/v0/account/{}",
+                    self.wallet.id.clone().unwrap(),
                 );
 
                 wallet_state::query(url)
@@ -168,7 +173,7 @@ impl Application for Tour {
                 progressed: _,
                 open_button: _,
             } => {
-                let url = "https://api.vit.iohk.io/api/v0/message".to_owned();
+                let url = "https://explorer.incentivized-testnet.iohkdev.io/api/v0/message".to_owned();
                 let body = self.wallet.vote.clone().unwrap_or_default();
 
                 send_transaction::post(url, body)

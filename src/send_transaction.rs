@@ -1,5 +1,4 @@
 use iced_futures::futures;
-use serde::Deserialize;
 
 // Just a little utility function
 pub fn post<T: ToString>(url: T, body: Box<[u8]>) -> iced::Subscription<Progress> {
