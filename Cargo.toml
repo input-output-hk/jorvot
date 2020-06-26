@@ -1,6 +1,6 @@
 [package]
 name = "jorvote"
-version = "0.2.1"
+version = "1.0.0"
 authors = ["Nicolas Di Prima <nicolasdiprima@iohk.io>"]
 edition = "2018"
 repository = "https://github.com/input-output-hk/jorvot"
