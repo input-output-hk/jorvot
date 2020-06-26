@@ -149,16 +149,7 @@ impl Application for Tour {
                 loaded: None,
                 progressed: _,
             } => {
-                let address = chain_addr::AddressReadable::from_address(
-                    "test",
-                    &self
-                        .wallet
-                        .wallet
-                        .as_ref()
-                        .unwrap()
-                        .account(Discrimination::Production),
-                );
-                dbg!(address.to_string());
+                dbg!(self.wallet.id.clone().unwrap());
                 let url = format!(
                     "https://explorer.incentivized-testnet.iohkdev.io/api/v0/account/{}",
                     self.wallet.id.clone().unwrap(),
