@@ -77,7 +77,10 @@ impl Wallet {
 
     pub fn set_state(&mut self, value: chain::Value, counter: u32) {
         if let Some(wallet) = self.wallet.as_mut() {
-            wallet.set_state(value, counter)
+            if let Some(id) = &self.id {
+                let id = id.parse().unwrap();
+                wallet.utxo_account_id_set_state(&id, value, counter)
+            }
         }
     }
 
