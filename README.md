@@ -1,5 +1,9 @@
 The idea is to provide basic app to recover wallet and action upon it
 
+<h1>DEPRECATED</h1>
+
+Time for voting is long gone. This was a temporary app to simplify the voting process.
+
 # Build & Run
 
 ```
